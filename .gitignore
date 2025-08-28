@@ -1,0 +1,6 @@
+/.venv/
+/.env
+/.python-version
+/.idea/*
+/*.sqlite3
+/facts/
