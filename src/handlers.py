@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
@@ -196,6 +197,10 @@ async def handle_video_submission(
             "• https://vm.tiktok.com/ABCD1234/\n"
             "• https://vt.tiktok.com/XYZ9876/"
         )
+
+    links = list(tiktok_links)
+    random.shuffle(links)
+
     for link in tiktok_links:
         try:
             await queue.put(
