@@ -1,10 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import AsyncIterable, Optional, Generic, TypeVar
-import asyncio
 
-from src.interfaces import Command
 
-T = TypeVar("T", bound="Task")
+T = TypeVar("T")
 
 
 class Queue(ABC, Generic[T]):

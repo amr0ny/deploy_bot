@@ -1,9 +1,7 @@
-import asyncio
-import random
 from enum import Enum
 from typing import Any
 
-from src.provider.interfaces import AsyncTask, Provider
+from src.provider.interfaces import AsyncTask
 from src.provider.models import BrowserConfig
 
 

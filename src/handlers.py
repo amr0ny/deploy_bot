@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 
 from aiogram import Router
 from aiogram.filters import Command, CommandObject

@@ -1,9 +1,7 @@
 from src.provider.interfaces import AsyncProvider
-from datetime import datetime
 from typing import Optional
-from playwright.async_api import Browser, Page
+from playwright.async_api import Page
 import logging
-from src.browser.stealth import StealthBrowser
 from src.provider.models import TimeoutConfig
 
 
@@ -31,16 +29,7 @@ class AsyncSnaptikProvider(AsyncProvider):
             # Теперь работаем только с page, browser не нужен
             return await self._parse_page(page, url)
 
-        except Exception as e:
-            logger.error(f"Parse error: {e}")
-
-            # Создаем папку для ошибок если не существует
-            error_dir = Path("errors")
-            error_dir.mkdir(exist_ok=True)
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            await page.screenshot(path=error_dir / f"error_{timestamp}.png")
-
+        except Exception:
             return None
 
     async def _continue_web(self, page: Page) -> bool:

@@ -1,16 +1,14 @@
 import time
 
 from src.provider.models import BrowserConfig
-from pathlib import Path
 from datetime import datetime
-from typing import Optional, Tuple, List, Any, Dict, AsyncGenerator
+from typing import Optional, List, Any, Dict, AsyncGenerator
 import asyncio
-import random
 from playwright.async_api import async_playwright, Browser
 import logging
 
 from src.browser.stealth import StealthBrowser
-from src.provider.interfaces import Provider, AsyncTask, AsyncProvider
+from src.provider.interfaces import AsyncTask, AsyncProvider
 
 logger = logging.getLogger(__name__)
 

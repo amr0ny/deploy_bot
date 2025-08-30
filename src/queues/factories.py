@@ -1,10 +1,8 @@
-from codeop import CommandCompiler
 from enum import Enum
-from typing import Dict, Type, Any
 
 from src.interfaces import Command
 from src.queues.implementations.inmemory import InMemoryQueue
-from src.queues.interfaces import AsyncQueue, Queue
+from src.queues.interfaces import Queue
 
 from src.queues.tasks import TaskVideo, TaskLink
 from src.abstract import BaseFactory

@@ -1,10 +1,8 @@
 import asyncio
 import logging
-import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
-from dotenv import load_dotenv
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from sqlalchemy.ext.asyncio.engine import create_async_engine
