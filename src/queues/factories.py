@@ -7,7 +7,7 @@ from src.queues.implementations.inmemory import InMemoryQueue
 from src.queues.interfaces import AsyncQueue, Queue
 
 from src.queues.tasks import TaskVideo, TaskLink
-from src.types import BaseFactory
+from src.abstract import BaseFactory
 
 
 class QueueType(Enum):
