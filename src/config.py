@@ -10,7 +10,7 @@ class AppConfig(BaseSettings):
     debug: bool = False
     queue_name: str = "default"
     queue_maxsize: int = 10000
-    facts_dir_path: str = "../facts"
+    facts_dir_path: str = "./facts/"
     short_facts_file: str = "short_facts.txt"
     medium_facts_file: str = "medium_facts.txt"
 
