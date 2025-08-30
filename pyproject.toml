@@ -1,21 +1,23 @@
-[project]
-name = "autopastebot"
-version = "0.1.0"
-description = ""
-authors = [
-    {name = "Your Name",email = "you@example.com"}
-]
+[tool.poetry]
+name = "telegram-bot"
+version = "0.1.1"
+description = "Telegram bot for automated video uploading"
+authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-    "aiogram (>=3.20.0.post0,<4.0.0)",
-    "apscheduler (>=3.11.0,<4.0.0)",
-    "aiosqlite (>=0.21.0,<0.22.0)",
-    "sqlalchemy (>=2.0.41,<3.0.0)",
-    "python-dotenv (>=1.1.0,<2.0.0)"
-]
+packages = [{include = "src"}]
 
+[tool.poetry.dependencies]
+python = "^3.9"
+aiogram = "^3.0"
+sqlalchemy = "^2.0"
+ruff = "^0.12.11"
+greenlet = "^3.2.4"
+playwright = "^1.55.0"
+pydantic-settings = "^2.10.1"
+
+[poetry.group.dev.dependencies]
+pytest = "^7.0"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core"]
+build-backery = "poetry.core.masonry.api"

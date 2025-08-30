@@ -1,0 +1,12 @@
+from typing import Type, Dict, Any
+
+from src.provider.interfaces import AsyncTask
+from src.provider.tasks import TaskBrowserType, TaskBrowserVideo
+from src.types import BaseFactory
+
+
+class TaskBrowserFactory(BaseFactory[TaskBrowserType, AsyncTask]):
+    pass
+
+
+TaskBrowserFactory.register(TaskBrowserType.VIDEO, TaskBrowserVideo)
