@@ -80,7 +80,7 @@ async def setup_scheduler(
         scheduler.add_job(
             schedule_today,
             "cron",
-            hour=14,
+            hour=00,
             minute=00,
             args=[bot, db_session, queue, manager, task_browser_factory, channel_id],
         )
