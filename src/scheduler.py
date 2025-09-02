@@ -84,4 +84,6 @@ async def setup_scheduler(
             minute=00,
             args=[bot, db_session, queue, manager, task_browser_factory, channel_id],
         )
+        await schedule_today(bot, db_session, queue, manager, task_browser_factory, channel_id)
+
         scheduler.start()
