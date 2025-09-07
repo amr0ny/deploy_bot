@@ -3,7 +3,7 @@ from typing import Optional
 from playwright.async_api import Page
 import logging
 from src.provider.models import TimeoutConfig
-
+from playwright.async_api import TimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,19 @@ class AsyncSnaptikProvider(AsyncProvider):
     async def _continue_web(self, page: Page) -> bool:
         """Асинхронная обработка всплывающего окна."""
         try:
-            await page.click(
-                "button.button.continue-web", timeout=self.timeouts.continue_button
+            button = await page.wait_for_selector(
+                "button.button.continue-web",
+                timeout=self.timeouts.wait_for_continue_button
             )
-            return True
+            if button:
+                await button.click(timeout=self.timeouts.continue_button)
+        except TimeoutError:
+            # Кнопка не появилась — это не ошибка
+            logger.debug("Continue button not found, skipping")
         except Exception as e:
+            # Любая другая ошибка — логируем, но продолжаем
             logger.warning(f"Continue button error: {e}")
-            return False
+        return True
 
     async def _parse_page(self, page: Page, video_url: str) -> Optional[str]:
         """Асинхронная логика парсинга страницы."""

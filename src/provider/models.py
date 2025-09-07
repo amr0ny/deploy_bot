@@ -19,6 +19,7 @@ class BrowserConfig:
 @dataclass
 class TimeoutConfig:
     page_load: int = 30000  # Таймаут загрузки страницы
+    wait_for_continue_button: int = 3000
     continue_button: int = 5000  # Таймаут кнопки "Continue"
     form_selector: int = 10000  # Таймаут ожидания формы
     result_load: int = 30000
