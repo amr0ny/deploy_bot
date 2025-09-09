@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
+from src.provider.decorators import screenshot_on_exception
 from src.provider.interfaces import AsyncProvider
 from typing import Optional
 from playwright.async_api import Page
@@ -24,6 +25,7 @@ class AsyncSnaptikProvider(AsyncProvider):
         self.screenshot_dir = Path(screenshot_dir)
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
 
+    @screenshot_on_exception
     async def parse(self, page: Page, *args, **kwargs) -> Optional[str]:
         """Асинхронный метод парсинга видео."""
         url = kwargs.get("url")
@@ -31,13 +33,11 @@ class AsyncSnaptikProvider(AsyncProvider):
             logger.warning("No URL provided for parsing")
             return None
 
-        try:
             # Теперь работаем только с page, browser не нужен
-            return await self._parse_page(page, url)
+        return await self._parse_page(page, url)
 
-        except Exception:
-            return None
 
+    @screenshot_on_exception
     async def _continue_web(self, page: Page) -> bool:
         """Асинхронная обработка всплывающего окна."""
         try:
@@ -55,52 +55,40 @@ class AsyncSnaptikProvider(AsyncProvider):
             logger.warning(f"Continue button error: {e}")
         return True
 
-    async def _capture_screenshot(self, page: Page):
-        try:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            screenshot_path = self.screenshot_dir / f"task_error_{id(self)}_{ts}.png"
-            await page.screenshot(path=str(screenshot_path))
-            logger.error(f"Screenshot saved: {screenshot_path}")
-        except Exception as se:
-            logger.error(f"Failed to capture screenshot: {se}")
-
+    @screenshot_on_exception
     async def _parse_page(self, page: Page, video_url: str) -> Optional[str]:
         """Асинхронная логика парсинга страницы."""
-        try:
-            # Навигация с ожиданием
-            await page.goto(
-                self.url, timeout=self.timeouts.page_load, wait_until="domcontentloaded"
-            )
+        # Навигация с ожиданием
+        await page.goto(
+            self.url, timeout=self.timeouts.page_load, wait_until="domcontentloaded"
+        )
 
-            # Обработка всплывающего окна
-            if not await self._continue_web(page):
-                return None
+        # Обработка всплывающего окна
+        if not await self._continue_web(page):
+            return None
 
-            # Ожидание и заполнение формы
-            form = await page.wait_for_selector(
-                'form.form[name="formurl"]', timeout=self.timeouts.form_selector
-            )
+        # Ожидание и заполнение формы
+        form = await page.wait_for_selector(
+            'form.form[name="formurl"]', timeout=self.timeouts.form_selector
+        )
 
-            input_field = await form.wait_for_selector('input[name="url"]')
-            await input_field.fill(video_url)
+        input_field = await form.wait_for_selector('input[name="url"]')
+        await input_field.fill(video_url)
 
-            # Отправка формы
-            submit_button = await form.wait_for_selector('button[type="submit"]')
-            await submit_button.click()
+        # Отправка формы
+        submit_button = await form.wait_for_selector('button[type="submit"]')
+        await submit_button.click()
 
-            # Ожидание результатов
-            await page.wait_for_selector(
-                "div.video-links, div.error-message", timeout=self.timeouts.result_load
-            )
+        # Ожидание результатов
+        await page.wait_for_selector(
+            "div.video-links, div.error-message", timeout=self.timeouts.result_load
+        )
 
-            # Поиск ссылок для скачивания
-            links = await page.query_selector_all("div.video-links a")
-            if links:
-                first_link = links[0]
-                return await first_link.get_attribute("href")
+        # Поиск ссылок для скачивания
+        links = await page.query_selector_all("div.video-links a")
+        if links:
+            first_link = links[0]
+            return await first_link.get_attribute("href")
 
-            raise Exception("No download links found")
+        raise Exception("No download links found")
 
-        except Exception as e:
-            logger.error(f"Parsing failed: {e}")
-            raise
