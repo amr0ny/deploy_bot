@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class TaskManager:
     """Менеджер для управления и выполнения задач с расширенной функциональностью."""
 
-    def __init__(self, max_parallel: int = 3, screenshot_dir: str = "error_screenshots"):
+    def __init__(self, max_parallel: int = 3):
         self.max_parallel = max_parallel
         self.semaphore = asyncio.Semaphore(max_parallel)
         self.active_tasks = {}  # task_id -> task_info
@@ -25,8 +25,6 @@ class TaskManager:
         self.failed_tasks = 0
         self.lock = asyncio.Lock()  # Для thread-safe операций
         self._stop_requested = False
-        self.screenshot_dir = Path(screenshot_dir)
-        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     async def execute_task(self, task: AsyncTask, **dependencies) -> Any:
         """Выполнение задачи с ограничением параллелизма и мониторингом."""
@@ -57,15 +55,6 @@ class TaskManager:
                 return result
 
             except Exception as e:
-                page = dependencies.get("page")
-                if page:
-                    try:
-                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        screenshot_path = self.screenshot_dir / f"task_error_{id(self)}_{ts}.png"
-                        await page.screenshot(path=str(screenshot_path))
-                        logger.error(f"Screenshot saved: {screenshot_path}")
-                    except Exception as se:
-                        logger.error(f"Failed to capture screenshot: {se}")
 
                 async with self.lock:
                     task_info["status"] = "failed"

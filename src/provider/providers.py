@@ -1,3 +1,6 @@
+from datetime import datetime
+from pathlib import Path
+
 from src.provider.interfaces import AsyncProvider
 from typing import Optional
 from playwright.async_api import Page
@@ -13,10 +16,13 @@ class AsyncSnaptikProvider(AsyncProvider):
         self,
         timeouts: TimeoutConfig = TimeoutConfig(),
         stealth_settings: Optional[dict] = None,
+        screenshot_dir: str = "error_screenshots"
     ):
         self.url = "https://snaptik.app/"
         self.timeouts = timeouts
         self.stealth_settings = stealth_settings or {}
+        self.screenshot_dir = Path(screenshot_dir)
+        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     async def parse(self, page: Page, *args, **kwargs) -> Optional[str]:
         """Асинхронный метод парсинга видео."""
@@ -48,6 +54,15 @@ class AsyncSnaptikProvider(AsyncProvider):
             # Любая другая ошибка — логируем, но продолжаем
             logger.warning(f"Continue button error: {e}")
         return True
+
+    async def _capture_screenshot(self, page: Page):
+        try:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_path = self.screenshot_dir / f"task_error_{id(self)}_{ts}.png"
+            await page.screenshot(path=str(screenshot_path))
+            logger.error(f"Screenshot saved: {screenshot_path}")
+        except Exception as se:
+            logger.error(f"Failed to capture screenshot: {se}")
 
     async def _parse_page(self, page: Page, video_url: str) -> Optional[str]:
         """Асинхронная логика парсинга страницы."""
