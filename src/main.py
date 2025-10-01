@@ -42,6 +42,7 @@ async def main():
     timeout_config = TimeoutConfig()
     browser_config = BrowserConfig()
     task_browser_manager = TaskManager()
+    proxy_repository = ProxyRepository(session_maker)
     fact_repository = FactRepository(session_maker)
     yt_dlp_provider = AsyncYtDlpProvider()
     manager = AsyncProviderManager(
@@ -58,7 +59,7 @@ async def main():
 
     admin_middleware = AdminOnlyMiddleware(config.admin_ids)
     db_middleware = DbMiddleware("db_session", session_maker)
-
+    proxy_repository_middleware = DependencyMiddleware("proxy_repository", proxy_repository)
     fact_repository_middleware = DependencyMiddleware("fact_repository", fact_repository)
     queue_middleware = DependencyMiddleware("queue", task_queue)
     task_factory_middleware = DependencyMiddleware("task_factory", task_factory)
@@ -69,8 +70,9 @@ async def main():
     config_middleware = DependencyMiddleware("config", config)
 
     router.message.middleware(admin_middleware)
-    dp.update.outer_middleware(fact_repository_middleware)
     dp.update.outer_middleware(db_middleware)
+    dp.update.outer_middleware(proxy_repository_middleware)
+    dp.update.outer_middleware(fact_repository_middleware)
     dp.update.outer_middleware(queue_middleware)
     dp.update.outer_middleware(task_factory_middleware)
     dp.update.outer_middleware(manager_middleware)

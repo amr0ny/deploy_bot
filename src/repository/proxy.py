@@ -6,14 +6,13 @@ from sqlalchemy import delete
 from typing import List, Optional
 import time
 
+from src.models import Proxy
 
 proxy_regex = re.compile(
     r"^(http|https|socks4|socks5)://"  # протокол
     r"(([a-zA-Z0-9.-]+)|(\d{1,3}(\.\d{1,3}){3}))"  # домен или IPv4
     r":([1-9]\d{0,4})$"  # порт
 )
-
-from src.models import Proxy, Base
 
 class ProxyRepository:
     def __init__(self, session_maker: async_sessionmaker[AsyncSession]):

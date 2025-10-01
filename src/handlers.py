@@ -227,6 +227,73 @@ async def cmd_video_clear(message: Message, queue: AsyncQueue):
     await message.answer("🗑 Очередь видео полностью очищена.")
 
 
+@router.message(Command("add_proxy"))
+async def add_proxy(message: Message, proxy_repository: ProxyRepository):
+    try:
+        proxy_str = message.caption or message.text or ""
+        if proxy_str.startswith("/add_proxy"):
+            proxy_str = proxy_str[len("/add_proxy"):].strip()  # убираем команду
+
+        server, username, password = parse_proxy(proxy_str)
+
+        if not server:
+            await message.answer(
+                "Некорректный формат прокси.\nПример: http://user:pass@host:port"
+            )
+            return
+
+        await proxy_repository.add_proxy(server, username, password)
+        await message.answer(f"Прокси {server} успешно добавлен!")
+
+    except Exception as e:
+        await message.answer(f"Ошибка при добавлении прокси: {e}")
+
+
+@router.message(Command("remove_proxy"))
+async def remove_proxy(message: Message, proxy_repository: ProxyRepository):
+    try:
+        msg = message.caption or message.text or ""
+
+        if msg.startswith("/remove_proxy"):
+            proxy_id_str = msg[len("/remove_proxy"):].strip()
+
+        if proxy_id_str.isdigit():
+            proxy_id = int(proxy_id_str)
+        else:
+            await message.answer("Нужно указать число (ID прокси)")
+            return
+        await proxy_repository.remove_proxy(proxy_id)
+
+        await message.answer(f"Прокси c id {proxy_id} успешно удален!")
+
+    except Exception as e:
+        await message.answer(f"Ошибка при удалении прокси: {e}")
+
+
+@router.message(Command("remove_all_proxies"))
+async def remove_all_proxies(message: Message, proxy_repository: ProxyRepository):
+    try:
+        await proxy_repository.remove_all_proxies()
+        await message.answer("Все прокси успешно удалены")
+    except Exception as e:
+        await message.answer(f"Ошибка при удалении прокси: {e}")
+
+@router.message(Command("proxy_list"))
+async def proxy_list(message: Message, proxy_repository: ProxyRepository):
+    try:
+        res = ""
+        proxy_list = await proxy_repository.get_proxies()
+        if len(proxy_list) <= 0:
+            await message.answer("Список прокси пуст")
+            return
+        for proxy in proxy_list:
+            res += str(proxy) + "\n"
+
+        await message.answer(res)
+    except Exception as e:
+        await message.answer(f"Ошибка при получении списка прокси: {e}")
+
+
 @router.message()
 async def handle_video_submission(
     message: Message, queue: AsyncQueue
