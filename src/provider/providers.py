@@ -1,94 +1,177 @@
-from datetime import datetime
-from pathlib import Path
-
-from src.provider.decorators import screenshot_on_exception
-from src.provider.interfaces import AsyncProvider
-from typing import Optional
-from playwright.async_api import Page
+import asyncio
+import os
+import json
+from typing import Optional, Dict, Any
+from yt_dlp import YoutubeDL
 import logging
-from src.provider.models import TimeoutConfig
-from playwright.async_api import TimeoutError
 
-logger = logging.getLogger(__name__)
+from src.provider.interfaces import AsyncProvider
 
 
-class AsyncSnaptikProvider(AsyncProvider):
-    def __init__(
-        self,
-        timeouts: TimeoutConfig = TimeoutConfig(),
-        stealth_settings: Optional[dict] = None,
-        screenshot_dir: str = "error_screenshots"
-    ):
-        self.url = "https://snaptik.app/"
-        self.timeouts = timeouts
-        self.stealth_settings = stealth_settings or {}
-        self.screenshot_dir = Path(screenshot_dir)
-        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+class AsyncYtDlpProvider(AsyncProvider):
+    """
+    Асинхронный провайдер для работы с yt-dlp
+    """
 
-    @screenshot_on_exception
-    async def parse(self, page: Page, *args, **kwargs) -> Optional[str]:
-        """Асинхронный метод парсинга видео."""
-        url = kwargs.get("url")
-        if not url:
-            logger.warning("No URL provided for parsing")
-            return None
+    def __init__(self, download_path: str = "downloads", quality: str = "best"):
+        self.download_path = download_path
+        self.quality = quality
+        self.logger = self._setup_logger()
+        os.makedirs(download_path, exist_ok=True)
 
-            # Теперь работаем только с page, browser не нужен
-        return await self._parse_page(page, url)
-
-
-    @screenshot_on_exception
-    async def _continue_web(self, page: Page) -> bool:
-        """Асинхронная обработка всплывающего окна."""
-        try:
-            button = await page.wait_for_selector(
-                "button.button.continue-web",
-                timeout=self.timeouts.wait_for_continue_button
+    def _setup_logger(self) -> logging.Logger:
+        logger = logging.getLogger(__name__)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             )
-            if button:
-                await button.click(timeout=self.timeouts.continue_button)
-        except TimeoutError:
-            # Кнопка не появилась — это не ошибка
-            logger.debug("Continue button not found, skipping")
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+        return logger
+
+    def _get_ydl_opts(self, output_template: Optional[str] = None) -> Dict[str, Any]:
+        if output_template is None:
+            output_template = os.path.join(
+                self.download_path,
+                '%(title).100s.%(ext)s'
+            )
+
+        return {
+            'format': self.quality,
+            'outtmpl': output_template,
+            'quiet': False,
+            'no_warnings': False,
+            'ignoreerrors': False,
+            'logtostderr': False,
+            'noplaylist': True,
+            'extract_flat': False,
+            'writethumbnail': False,
+            'writeinfojson': False,
+            'writesubtitles': False,
+            'writeautomaticsub': False,
+            'consoletitle': False,
+            'extractor_args': {
+                'tiktok:format': 'download_addr'
+            }
+        }
+
+    async def retrieve(self, url: str, download: bool = True, **kwargs) -> Any:
+        """
+        Основной метод для получения видео или информации о нем
+
+        Args:
+            url: Ссылка на видео
+            download: Скачивать видео или только получать информацию
+            **kwargs: Дополнительные параметры
+                - custom_filename: Кастомное имя файла
+                - audio_only: Скачивать только аудио
+                - quality: Качество видео
+
+        Returns:
+            Путь к файлу или информация о видео
+        """
+        try:
+            # Обновляем качество если передано в kwargs
+            quality = kwargs.get('quality', self.quality)
+            custom_filename = kwargs.get('custom_filename')
+            audio_only = kwargs.get('audio_only', False)
+
+            if audio_only:
+                return await self.download_audio_only(url, custom_filename)
+            elif download:
+                return await self.download_video(url, custom_filename, quality)
+            else:
+                return await self.get_video_info(url)
+
         except Exception as e:
-            # Любая другая ошибка — логируем, но продолжаем
-            logger.warning(f"Continue button error: {e}")
-        return True
-
-    @screenshot_on_exception
-    async def _parse_page(self, page: Page, video_url: str) -> Optional[str]:
-        """Асинхронная логика парсинга страницы."""
-        # Навигация с ожиданием
-        await page.goto(
-            self.url, timeout=self.timeouts.page_load, wait_until="domcontentloaded"
-        )
-
-        # Обработка всплывающего окна
-        if not await self._continue_web(page):
+            self.logger.error(f"Ошибка в retrieve: {str(e)}")
             return None
 
-        # Ожидание и заполнение формы
-        form = await page.wait_for_selector(
-            'form.form[name="formurl"]', timeout=self.timeouts.form_selector
-        )
+    async def get_video_info(self, url: str) -> Optional[Dict[str, Any]]:
+        try:
+            def extract_info():
+                with YoutubeDL({'quiet': True}) as ydl:
+                    return ydl.extract_info(url, download=False)
 
-        input_field = await form.wait_for_selector('input[name="url"]')
-        await input_field.fill(video_url)
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(None, extract_info)
 
-        # Отправка формы
-        submit_button = await form.wait_for_selector('button[type="submit"]')
-        await submit_button.click()
+            self.logger.info(f"Получена информация о видео: {info.get('title', 'Unknown')}")
+            return info
 
-        # Ожидание результатов
-        await page.wait_for_selector(
-            "div.video-links, div.error-message", timeout=self.timeouts.result_load
-        )
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении информации: {str(e)}")
+            return None
 
-        # Поиск ссылок для скачивания
-        links = await page.query_selector_all("div.video-links a")
-        if links:
-            first_link = links[0]
-            return await first_link.get_attribute("href")
+    async def download_video(self, url: str, custom_filename: Optional[str] = None, quality: Optional[str] = None) -> \
+    Optional[str]:
+        try:
+            output_template = None
+            if custom_filename:
+                output_template = os.path.join(
+                    self.download_path,
+                    f"{custom_filename}.%(ext)s"
+                )
 
-        raise Exception("No download links found")
+            ydl_opts = self._get_ydl_opts(output_template)
+            if quality:
+                ydl_opts['format'] = quality
 
+            def download():
+                with YoutubeDL(ydl_opts) as ydl:
+                    return ydl.extract_info(url, download=True)
+
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(None, download)
+
+            if info and 'requested_downloads' in info and info['requested_downloads']:
+                filepath = info['requested_downloads'][0]['filepath']
+                self.logger.info(f"Видео успешно скачано: {filepath}")
+                return filepath
+            else:
+                self.logger.error("Не удалось получить путь к скачанному файлу")
+                return None
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при скачивании: {str(e)}")
+            return None
+
+    async def download_audio_only(self, url: str, custom_filename: Optional[str] = None) -> Optional[str]:
+        try:
+            output_template = None
+            if custom_filename:
+                output_template = os.path.join(
+                    self.download_path,
+                    f"{custom_filename}.%(ext)s"
+                )
+
+            ydl_opts = self._get_ydl_opts(output_template)
+            ydl_opts.update({
+                'format': 'bestaudio/best',
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+            })
+
+            def download():
+                with YoutubeDL(ydl_opts) as ydl:
+                    return ydl.extract_info(url, download=True)
+
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(None, download)
+
+            if info and 'requested_downloads' in info and info['requested_downloads']:
+                filepath = info['requested_downloads'][0]['filepath']
+                self.logger.info(f"Аудио успешно скачано: {filepath}")
+                return filepath
+            else:
+                self.logger.error("Не удалось получить путь к скачанному аудио файлу")
+                return None
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при скачивании аудио: {str(e)}")
+            return None

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+from typing import Tuple
 
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
@@ -10,11 +11,15 @@ from repository.publication_slot import PublicationSlotRepository
 
 from src import facts as fct
 from src.config import AppConfig
-from src.provider.factories import TaskBrowserFactory
-from src.provider.manager import AsyncProviderManager
+from src.models import FactType
+from src.provider.factories import AsyncTaskFactory
+from src.provider.manager import AsyncBrowserProviderManager, AsyncProviderManager
+from src.provider.providers import AsyncYtDlpProvider
 from src.queues.factories import TaskFactory, TaskType
 from src.queues.interfaces import AsyncQueue
-from src.utils import extract_tiktok_links
+from src.repository.facts import FactRepository
+from src.repository.proxy import ProxyRepository
+from src.utils import extract_tiktok_links, parse_proxy
 
 router = Router()
 logger = logging.getLogger()
@@ -107,38 +112,57 @@ async def cmd_video_mode_stop(message: Message, queue: AsyncQueue):
     await message.answer("🛑 Режим сбора видео ОТКЛЮЧЕН. Видео больше не сохраняются.")
 
 
-@router.message(Command("video_remaining"))
+@router.message(Command("remaining_video_count"))
 async def cmd_video_remaining(message: Message, queue: AsyncQueue):
     count = await queue.size()
     await message.answer(f"📦 В очереди сейчас {count} видео.")
 
 
-@router.message(Command("remaining"))
-async def cmd_remaining(message: Message):
-    facts = fct.count_remaining_facts()
+@router.message(Command("remaining_facts_count"))
+async def cmd_remaining_facts_count(message: Message, fact_repository: FactRepository):
+    short_facts_count = await fact_repository.get_facts_count(FactType.SHORT)
+    medium_facts_count = await fact_repository.get_facts_count(FactType.MEDIUM)
     await message.answer(
         f"📊 Осталось фактов:\n"
-        f"— Коротких: {facts['short']}\n"
-        f"— Средних: {facts['medium']}"
+        f"— Коротких: {short_facts_count}\n"
+        f"— Средних: {medium_facts_count}"
     )
 
+@router.message(Command("remove_all_facts"))
+async def cmd_remove_all_facts(message: Message, fact_repository: FactRepository):
+    command_parts = message.caption.split()
+    if len(command_parts) != 2:
+        await message.answer("❌ Использование: /upload short или /upload medium")
+        return
+
+    fact_type = command_parts[1].lower()
+    if fact_type not in ("short", "medium"):
+        await message.answer("❌ Тип должен быть: short или medium")
+        return
+
+
+    await fact_repository.remove_all_facts(FactType(fact_type))
+    await message.answer("Факты успешно удалены")
 
 @router.message(Command("test_post"))
 async def cmd_test_post(
     message: Message,
     queue: AsyncQueue,
     manager: AsyncProviderManager,
-    task_browser_factory: TaskBrowserFactory,
-    config: AppConfig
+    task_browser_factory: AsyncTaskFactory,
+    task_factory: TaskFactory,
+    fact_repository: FactRepository,
+    config: AppConfig,
 ):
     try:
-        task = await queue.get(timeout=10)
+        task_dict = await queue.get(timeout=10)
+        task = task_factory.create(TaskType.LINK, url=task_dict.get("url"))
     except asyncio.TimeoutError:
         await message.answer("Видео в очереди не найдено")
         return
 
-    short = fct.get_next_short_fact(False)
-    medium = fct.get_next_medium_fact(False)
+    short = await fact_repository.get_next_fact(FactType.SHORT)
+    medium = await fact_repository.get_next_fact(FactType.MEDIUM)
     await message.answer("📤 Отправляю тестовую публикацию в канал...")
     if short:
         await message.bot.send_message(config.channel_id, f"[test] {short}")
@@ -149,22 +173,52 @@ async def cmd_test_post(
 
 
 @router.message(Command("upload"))
-async def cmd_upload(message: Message):
+async def cmd_upload(message: Message, fact_repository: FactRepository):
+    # Парсим команду: /upload short или /upload medium
+    command_parts = message.caption.split()
+    if len(command_parts) != 2:
+        await message.answer("❌ Использование: /upload short или /upload medium")
+        return
+
+    fact_type = command_parts[1].lower()
+    if fact_type not in ("short", "medium"):
+        await message.answer("❌ Тип должен быть: short или medium")
+        return
+    fact_type = FactType(fact_type)
     if not message.document or not message.document.file_name.endswith(".txt"):
         await message.answer("❌ Пришлите .txt файл с фактами.")
         return
 
-    if message.document.file_name not in ("medium_facts.txt", "short_facts.txt"):
-        await message.answer(
-            '❌ Файл должен называться "medium_facts.txt" или "short_facts.txt".'
-        )
-        return
-
     await message.answer("⏳ Загружаю файл...")
-    await fct.upload_file(
-        message.bot, message.document.file_id, message.document.file_name
-    )
-    await message.answer(f"✅ Файл {message.document.file_name} загружен и заменён.")
+
+    try:
+        # Скачиваем файл
+        file = await message.bot.get_file(message.document.file_id)
+        file_content = await message.bot.download_file(file.file_path)
+
+        # Декодируем и разбиваем на строки
+        text = file_content.read().decode('utf-8')
+        facts = [line.strip() for line in text.split('\n') if line.strip()]
+
+        if not facts:
+            await message.answer("❌ Файл пуст или не содержит фактов.")
+            return
+
+        await message.answer(f"⏳ Обрабатываю {len(facts)} фактов...")
+
+        batch_size = 100
+        for i in range(0, len(facts), batch_size):
+            batch = facts[i:i + batch_size]
+            await fact_repository.add_facts_batch(batch, fact_type)
+
+            if i + batch_size < len(facts):
+                await message.answer(f"⏳ Обработано {min(i + batch_size, len(facts))}/{len(facts)} фактов...")
+
+        await message.answer(f"✅ Успешно добавлено {len(facts)} {fact_type} фактов в базу!")
+
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке файла: {e}")
+        await message.answer("❌ Произошла ошибка при обработке файла.")
 
 
 @router.message(Command("video_clear"))
@@ -175,7 +229,7 @@ async def cmd_video_clear(message: Message, queue: AsyncQueue):
 
 @router.message()
 async def handle_video_submission(
-    message: Message, queue: AsyncQueue, task_factory: TaskFactory
+    message: Message, queue: AsyncQueue
 ):
     if not await queue.get_flag():
         return
@@ -204,7 +258,7 @@ async def handle_video_submission(
     for link in tiktok_links:
         try:
             await queue.put(
-                task_factory.create(TaskType.LINK, url=link, caption=caption)
+                {"url": link}
             )
             logger.info(f"TikTok link added to queue: {link}")
 

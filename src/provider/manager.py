@@ -1,15 +1,15 @@
 import time
-from pathlib import Path
 
 from src.provider.models import BrowserConfig
 from datetime import datetime
 from typing import Optional, List, Any, Dict, AsyncGenerator
 import asyncio
-from playwright.async_api import async_playwright, Browser
+from playwright.async_api import async_playwright, Browser, ProxySettings
 import logging
 
 from src.browser.stealth import StealthBrowser
-from src.provider.interfaces import AsyncTask, AsyncProvider
+from src.provider.interfaces import AsyncTask, AsyncBrowserProvider, AsyncProvider
+from src.repository.proxy import ProxyRepository
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,6 @@ class TaskManager:
                 return result
 
             except Exception as e:
-
                 async with self.lock:
                     task_info["status"] = "failed"
                     task_info["end_time"] = datetime.now()
@@ -140,14 +139,14 @@ class TaskManager:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.wait_for_completion(timeout=30.0)  # Ждем завершения задач
 
-
-class AsyncProviderManager:
+class AsyncBrowserProviderManager:
     """Менеджер для асинхронной обработки задач с провайдерами."""
 
     def __init__(
         self,
-        provider: AsyncProvider,
+        provider: AsyncBrowserProvider,
         task_manager: TaskManager,
+        proxy_repository: ProxyRepository,
         browser_config: BrowserConfig = BrowserConfig(),
         max_parallel_tasks: int = 3,
     ):
@@ -155,6 +154,7 @@ class AsyncProviderManager:
         self.browser_config = browser_config
         self.max_parallel_tasks = max_parallel_tasks
         self.fingerprint = self._generate_fingerprint()
+        self.proxy_repository = proxy_repository
         self.task_manager = task_manager
         self.browser = None
         self.playwright = None
@@ -184,8 +184,10 @@ class AsyncProviderManager:
     async def _launch_browser(self) -> Browser:
         """Запуск браузера с настройками."""
         self.playwright = await async_playwright().start()
+        proxy = await self.proxy_repository.get_next_proxy()
         self.browser = await self.playwright.chromium.launch(
-            headless=self.browser_config.headless, args=self._get_browser_args()
+            headless=self.browser_config.headless, args=self._get_browser_args(),
+            proxy= ProxySettings(server=proxy.server, username=proxy.username, password=proxy.password) if proxy else None
         )
         return self.browser
 
@@ -333,3 +335,208 @@ class AsyncProviderManager:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.stop()
+
+
+logger = logging.getLogger(__name__)
+
+
+class AsyncProviderManager:
+    """
+    Менеджер для обработки задач с использованием провайдера и менеджера задач
+    """
+
+    def __init__(
+            self,
+            provider: AsyncProvider,
+            task_manager: TaskManager,
+            max_parallel_tasks: int = 3,
+    ):
+        self.provider = provider
+        self.task_manager = task_manager
+        self.max_parallel_tasks = max_parallel_tasks
+        self._processing_stats = {
+            "total_processed": 0,
+            "successful": 0,
+            "failed": 0,
+            "last_processed": None
+        }
+
+    async def process_task(self, task: AsyncTask, **kwargs) -> Any:
+        """
+        Обработка одной задачи с использованием провайдера
+
+        Args:
+            task: Задача для выполнения
+            **kwargs: Дополнительные параметры для провайдера
+
+        Returns:
+            Результат выполнения задачи
+        """
+        try:
+            logger.info(f"Начало обработки задачи {id(task)}")
+
+            # Выполняем задачу через task_manager
+            dependencies = self._get_dependencies()
+            result = await self.task_manager.execute_task(task, **dependencies)
+
+            # Обновляем статистику
+            self._update_stats(success=True)
+            logger.info(f"Задача {id(task)} успешно обработана")
+
+            return result
+
+        except Exception as e:
+            # Обновляем статистику
+            self._update_stats(success=False)
+            logger.error(f"Ошибка при обработке задачи {id(task)}: {str(e)}")
+            raise
+
+    def _get_dependencies(self):
+        return {
+            "provider": self.provider,
+        }
+    async def process_batch(self, tasks: List[AsyncTask], **kwargs) -> List[Any]:
+        """
+        Пакетная обработка задач
+
+        Args:
+            tasks: Список задач для выполнения
+            **kwargs: Дополнительные параметры для провайдера
+
+        Returns:
+            Список результатов выполнения задач
+        """
+        if not tasks:
+            logger.warning("Получен пустой список задач для пакетной обработки")
+            return []
+
+        logger.info(f"Начало пакетной обработки {len(tasks)} задач")
+
+        try:
+            # Выполняем все задачи через task_manager
+
+            dependencies = self._get_dependencies()
+            results = await self.task_manager.execute_many(tasks, **dependencies)
+
+            # Анализируем результаты и обновляем статистику
+            successful_count = 0
+            failed_count = 0
+
+            for result in results:
+                if isinstance(result, Exception):
+                    failed_count += 1
+                else:
+                    successful_count += 1
+
+            # Обновляем статистику
+            self._processing_stats["successful"] += successful_count
+            self._processing_stats["failed"] += failed_count
+            self._processing_stats["total_processed"] += len(tasks)
+            self._processing_stats["last_processed"] = datetime.now()
+
+            logger.info(
+                f"Пакетная обработка завершена: "
+                f"успешно {successful_count}, ошибок {failed_count}"
+            )
+
+            return results
+
+        except Exception as e:
+            logger.error(f"Ошибка при пакетной обработке: {str(e)}")
+            raise
+
+    async def process_with_timeout(
+            self,
+            task: AsyncTask,
+            timeout: float,
+            **kwargs
+    ) -> Any:
+        """
+        Обработка задачи с таймаутом
+
+        Args:
+            task: Задача для выполнения
+            timeout: Таймаут в секундах
+            **kwargs: Дополнительные параметры для провайдера
+
+        Returns:
+            Результат выполнения задачи
+        """
+        try:
+            logger.info(f"Обработка задачи {id(task)} с таймаутом {timeout} сек.")
+
+            result = await self.task_manager.execute_with_timeout(
+                task, timeout, **kwargs
+            )
+
+            self._update_stats(success=True)
+            logger.info(f"Задача {id(task)} успешно обработана с таймаутом")
+
+            return result
+
+        except asyncio.TimeoutError:
+            self._update_stats(success=False)
+            logger.warning(f"Задача {id(task)} превысила таймаут {timeout} сек.")
+            raise
+        except Exception as e:
+            self._update_stats(success=False)
+            logger.error(f"Ошибка при обработке задачи с таймаутом: {str(e)}")
+            raise
+
+    def _update_stats(self, success: bool):
+        """Обновление статистики обработки"""
+        self._processing_stats["total_processed"] += 1
+        if success:
+            self._processing_stats["successful"] += 1
+        else:
+            self._processing_stats["failed"] += 1
+        self._processing_stats["last_processed"] = datetime.now()
+
+    def get_processing_stats(self) -> Dict[str, Any]:
+        """
+        Получение статистики обработки
+
+        Returns:
+            Словарь со статистикой
+        """
+        return self._processing_stats.copy()
+
+    def get_combined_stats(self) -> Dict[str, Any]:
+        """
+        Получение комбинированной статистики (обработка + задачи)
+
+        Returns:
+            Объединенная статистика
+        """
+        task_stats = self.task_manager.get_stats()
+        processing_stats = self.get_processing_stats()
+
+        return {
+            "processing_stats": processing_stats,
+            "task_stats": task_stats,
+            "provider_type": type(self.provider).__name__,
+            "max_parallel_tasks": self.max_parallel_tasks
+        }
+
+    async def wait_for_completion(self, timeout: Optional[float] = None):
+        """
+        Ожидание завершения всех активных задач
+
+        Args:
+            timeout: Таймаут ожидания в секундах
+        """
+        await self.task_manager.wait_for_completion(timeout)
+
+    async def stop_processing(self):
+        """Остановка обработки задач"""
+        await self.task_manager.stop()
+        logger.info("Остановка обработки задач запрошена")
+
+    def get_active_tasks_info(self) -> List[Dict]:
+        """
+        Получение информации о активных задачах
+
+        Returns:
+            Список с информацией о активных задачах
+        """
+        return self.task_manager.get_active_tasks_info()

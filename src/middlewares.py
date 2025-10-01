@@ -4,9 +4,8 @@ from typing import Callable, Dict, Any, Awaitable, TypeVar, List
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 
-
-
 T = TypeVar("T")
+
 
 class DependencyMiddleware(BaseMiddleware):
     def __init__(self, key: str, dependency: T):
@@ -22,9 +21,11 @@ class DependencyMiddleware(BaseMiddleware):
         data[self.key] = self.dependency
         return await handler(event, data)
 
+
 class DbMiddleware(BaseMiddleware):
-    def __init__(self, session_maker: async_sessionmaker):
+    def __init__(self, key: str, session_maker: async_sessionmaker):
         self.session_maker = session_maker
+        self.key = key
 
     async def __call__(
         self,
@@ -33,12 +34,14 @@ class DbMiddleware(BaseMiddleware):
         data: Dict[str, Any],
     ) -> Any:
         async with self.session_maker() as session:
-            data["db_session"] = session
+            data[self.key] = session
             return await handler(event, data)
+
 
 class AdminOnlyMiddleware(BaseMiddleware):
     def __init__(self, admin_ids: List[int]):
         self.admin_ids = admin_ids
+
     async def __call__(
         self,
         handler: Callable[[Message, dict], Awaitable],

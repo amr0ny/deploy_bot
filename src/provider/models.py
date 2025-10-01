@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class BrowserConfig:
-    headless: bool = True
+    headless: bool = False
     disable_blink_features: bool = True
     no_sandbox: bool = True
     disable_web_security: bool = True

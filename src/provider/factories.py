@@ -1,11 +1,10 @@
-
 from src.provider.interfaces import AsyncTask
-from src.provider.tasks import TaskBrowserType, TaskBrowserVideo
+from src.provider.tasks import AsyncTaskType, AsyncTaskBrowserVideo, AsyncTaskVideo
 from src.abstract import BaseFactory
 
 
-class TaskBrowserFactory(BaseFactory[TaskBrowserType, AsyncTask]):
+class AsyncTaskFactory(BaseFactory[AsyncTaskType, AsyncTask]):
     pass
 
 
-TaskBrowserFactory.register(TaskBrowserType.VIDEO, TaskBrowserVideo)
+AsyncTaskFactory.register(AsyncTaskType.VIDEO, AsyncTaskVideo)

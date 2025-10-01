@@ -1,9 +1,27 @@
+import os
 import re
-from typing import List
-from urllib.parse import urlparse
+from typing import List, Tuple, Optional
+from urllib.parse import urlparse, unquote
 import base64
 import json
 import urllib.parse
+from aiogram.types import FSInputFile
+
+def parse_proxy(proxy_str: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    proxy_str = proxy_str.strip()
+    if not proxy_str:
+        return None, None, None
+
+    parsed = urlparse(proxy_str)
+
+    if not parsed.scheme or not parsed.hostname or not parsed.port:
+        return None, None, None
+
+    server = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+    username = unquote(parsed.username) if parsed.username else None
+    password = unquote(parsed.password) if parsed.password else None
+
+    return server, username, password
 
 
 def extract_mp4_url(rapid_url: str) -> str:
@@ -30,6 +48,7 @@ def extract_mp4_url(rapid_url: str) -> str:
     payload = json.loads(base64.urlsafe_b64decode(payload_b64))
 
     # Внутри "url" лежит ссылка на mp4
+    safe_url = urllib.parse.quote(payload.get("url"), safe=':/?&=')
     return payload.get("url")
 
 

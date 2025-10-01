@@ -12,19 +12,22 @@ from src.interfaces import Command
 logger = logging.getLogger(__name__)
 
 
-class Provider(ABC):
+class BrowserProvider(ABC):
     @abstractmethod
     def parse(self, browser: Browser, *args, **kwargs) -> Any:
         pass
 
 
-class AsyncProvider(ABC):
+class AsyncBrowserProvider(ABC):
     @abstractmethod
     async def parse(self, *args, **kwargs) -> Any:
         pass
 
-from pathlib import Path
-from datetime import datetime
+class AsyncProvider(ABC):
+    @abstractmethod
+    async def retrieve(self, *args, **kwargs) -> Any:
+        pass
+
 
 class AsyncTask(Command, ABC):
     """Абстрактный класс асинхронной задачи."""

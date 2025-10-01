@@ -49,7 +49,9 @@ def count_remaining_facts():
     medium = len(
         [
             p
-            for p in open(medium_facts_filepath, "r", encoding="utf-8").read().split("\n\n")
+            for p in open(medium_facts_filepath, "r", encoding="utf-8")
+            .read()
+            .split("\n\n")
             if p.strip()
         ]
     )

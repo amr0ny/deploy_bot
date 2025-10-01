@@ -1,9 +1,12 @@
+from enum import Enum
 from typing import Literal
 
 from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.asyncio.engine import AsyncEngine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.sql.functions import func
+from sqlalchemy.sql.sqltypes import DateTime, Integer, Enum as SQLEnum
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -39,6 +42,48 @@ class PublicationSlot(Base):
     content_type: Mapped[str] = mapped_column(
         String, nullable=False
     )  # short_fact, medium_fact, video
+
+
+class FactType(Enum):
+    SHORT = "short"
+    MEDIUM = "medium"
+
+
+class Fact(Base):
+    __tablename__ = "facts"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )
+    text: Mapped[str] = mapped_column(
+        String, nullable=False
+    )
+    type: Mapped[FactType] = mapped_column(
+        SQLEnum(FactType), nullable=False
+    )
+
+    def __str__(self):
+        return self.text
+class Proxy(Base):
+    __tablename__ = "proxies"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    server: Mapped[str] = mapped_column(String(255), nullable=False)
+    username: Mapped[str] = mapped_column(String(255), nullable=True)
+    password: Mapped[str] = mapped_column(String(255), nullable=True)
+    last_used_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+        comment="Время последнего использования прокси",
+    )
+
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    def __repr__(self):
+        return f"{self.id}. {self.server}, {self.last_used_at}"
 
 
 async def create_tables(engine: AsyncEngine):

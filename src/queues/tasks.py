@@ -1,11 +1,10 @@
-
+from src.contexts import context_video
 from src.interfaces import Command
 from aiogram import Bot
-
-from src.provider.factories import TaskBrowserFactory
+from aiogram.types import FSInputFile
+from src.provider.factories import AsyncTaskFactory
 from src.provider.manager import AsyncProviderManager
-from src.provider.tasks import TaskBrowserType
-from src.utils import extract_mp4_url
+from src.provider.tasks import AsyncTaskType
 
 
 class TaskVideo(Command):
@@ -14,25 +13,22 @@ class TaskVideo(Command):
         self.caption = caption
 
     async def execute(self, bot: Bot, channel_id: str):
-        await bot.send_video(
-            channel_id, self.file_id, caption=self.caption
-        )
+        await bot.send_video(channel_id, self.file_id, caption=self.caption)
 
 
 class TaskLink(Command):
-    def __init__(self, url: str, caption) -> Command:
+    def __init__(self, url: str) -> Command:
         self.url = url
-        self.caption = caption
 
     async def execute(
-        self, bot: Bot, manager: AsyncProviderManager, factory: TaskBrowserFactory, channel_id: str
+        self,
+        bot: Bot,
+        manager: AsyncProviderManager,
+        factory: AsyncTaskFactory,
+        channel_id: str,
     ):
-        task_browser = factory.create(TaskBrowserType.VIDEO, url=self.url)
-        encoded_url = await manager.process_task(task_browser, timeout=10000)
-        url = extract_mp4_url(encoded_url)
-        message = await bot.send_video(
-            chat_id=channel_id,
-            video=url,
-            caption=self.caption,
-            supports_streaming=True,
-        )
+        task_browser = factory.create(AsyncTaskType.VIDEO, url=self.url)
+        filename = await manager.process_task(task_browser, timeout=10000)
+
+        await bot.send_video(chat_id=channel_id, video=FSInputFile(filename), supports_streaming=True)
+

@@ -14,7 +14,9 @@ def screenshot_on_exception(func):
         except Exception as e:
             try:
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                screenshot_path = self.screenshot_dir / f"task_error_{id(self)}_{ts}.png"
+                screenshot_path = (
+                    self.screenshot_dir / f"task_error_{id(self)}_{ts}.png"
+                )
                 await page.screenshot(path=str(screenshot_path))
                 logger.error(f"Screenshot saved: {screenshot_path}")
             except Exception as se:
