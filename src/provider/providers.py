@@ -80,6 +80,7 @@ class AsyncYtDlpProvider(AsyncProvider):
             'writesubtitles': False,
             'writeautomaticsub': False,
             'consoletitle': False,
+            'cookiefile': 'cookies.txt',
             'extractor_args': {
                 'tiktok:format': 'download_addr'
             }
